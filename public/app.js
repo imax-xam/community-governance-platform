@@ -36,7 +36,10 @@ async function api(path, options = {}) {
     headers: { "Content-Type": "application/json", ...(options.headers || {}) },
     ...options
   });
-  const data = await response.json();
+  const contentType = response.headers.get("Content-Type") || "";
+  const data = contentType.includes("application/json")
+    ? await response.json()
+    : { error: await response.text() };
   if (!response.ok) throw new Error(data.error || "操作失败");
   return data;
 }
@@ -298,60 +301,62 @@ document.addEventListener("click", async (event) => {
   }
 });
 
-$("#loginForm").addEventListener("submit", async (event) => {
+document.addEventListener("submit", async (event) => {
+  const form = event.target;
+  if (!(form instanceof HTMLFormElement)) return;
   event.preventDefault();
-  try {
-    const { user } = await api("/api/login", { method: "POST", body: JSON.stringify(formData(event.target)) });
-    showApp(user);
-    await refreshData();
-  } catch (error) {
-    $("#authMessage").textContent = error.message;
-  }
-});
 
-$("#registerForm").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  try {
-    await api("/api/register", { method: "POST", body: JSON.stringify(formData(event.target)) });
-    $("#authMessage").textContent = "注册成功，请使用邮箱和密码登录";
-    setAuthTab("login");
-  } catch (error) {
-    $("#authMessage").textContent = error.message;
+  if (form.id === "loginForm") {
+    try {
+      const { user } = await api("/api/login", { method: "POST", body: JSON.stringify(formData(form)) });
+      showApp(user);
+      await refreshData();
+    } catch (error) {
+      $("#authMessage").textContent = error.message;
+    }
   }
-});
 
-$("#issueForm").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  try {
-    await api("/api/issues", { method: "POST", body: JSON.stringify(formData(event.target)) });
-    event.target.reset();
-    toast("诉求已提交");
-    await refreshData();
-  } catch (error) {
-    toast(error.message);
+  if (form.id === "registerForm") {
+    try {
+      await api("/api/register", { method: "POST", body: JSON.stringify(formData(form)) });
+      $("#authMessage").textContent = "注册成功，请使用邮箱和密码登录";
+      setAuthTab("login");
+    } catch (error) {
+      $("#authMessage").textContent = error.message;
+    }
   }
-});
 
-$("#announcementForm").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  try {
-    await api("/api/announcements", { method: "POST", body: JSON.stringify(formData(event.target)) });
-    event.target.reset();
-    toast("公告已发布");
-  } catch (error) {
-    toast(error.message);
+  if (form.id === "issueForm") {
+    try {
+      await api("/api/issues", { method: "POST", body: JSON.stringify(formData(form)) });
+      form.reset();
+      toast("诉求已提交");
+      await refreshData();
+      showPage("issues");
+    } catch (error) {
+      toast(`提交失败：${error.message}`);
+    }
   }
-});
 
-$("#activityForm").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  try {
-    await api("/api/activities", { method: "POST", body: JSON.stringify(formData(event.target)) });
-    event.target.reset();
-    toast("活动已发布");
-    await refreshData();
-  } catch (error) {
-    toast(error.message);
+  if (form.id === "announcementForm") {
+    try {
+      await api("/api/announcements", { method: "POST", body: JSON.stringify(formData(form)) });
+      form.reset();
+      toast("公告已发布");
+    } catch (error) {
+      toast(error.message);
+    }
+  }
+
+  if (form.id === "activityForm") {
+    try {
+      await api("/api/activities", { method: "POST", body: JSON.stringify(formData(form)) });
+      form.reset();
+      toast("活动已发布");
+      await refreshData();
+    } catch (error) {
+      toast(error.message);
+    }
   }
 });
 
