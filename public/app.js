@@ -333,7 +333,7 @@ document.addEventListener("click", async (event) => {
     if (!confirmed) return;
     try {
       setButtonBusy(deleteActivityButton, true, "删除中...");
-      await api(`/api/activities/${deleteActivityButton.dataset.deleteActivity}`, { method: "DELETE" });
+      await api(`/api/activities/${deleteActivityButton.dataset.deleteActivity}/delete`, { method: "POST" });
       await refreshData();
       toast("活动已删除");
     } catch (error) {

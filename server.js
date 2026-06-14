@@ -237,6 +237,13 @@ function issueChangeText(nextStatus, nextAssigneeId, issue, users) {
   return changes.join("，");
 }
 
+function removeActivity(data, activityId) {
+  const index = data.activities.findIndex((item) => item.id === activityId);
+  if (index === -1) return null;
+  const [activity] = data.activities.splice(index, 1);
+  return activity;
+}
+
 function buildStats(data) {
   const byStatus = {};
   const byCategory = {};
@@ -378,13 +385,15 @@ async function handleApi(req, res, pathname) {
     return sendJson(res, 201, { activity });
   }
 
-  if (method === "DELETE" && pathname.match(/^\/api\/activities\/[^/]+$/)) {
+  if (
+    (method === "DELETE" && pathname.match(/^\/api\/activities\/[^/]+$/)) ||
+    (method === "POST" && pathname.match(/^\/api\/activities\/[^/]+\/delete$/))
+  ) {
     if (!requireRole(user, res, ["staff", "manager"])) return;
     const activityId = pathname.split("/")[3];
     const data = await readStore();
-    const index = data.activities.findIndex((item) => item.id === activityId);
-    if (index === -1) return sendError(res, 404, "活动不存在");
-    const [activity] = data.activities.splice(index, 1);
+    const activity = removeActivity(data, activityId);
+    if (!activity) return sendError(res, 404, "活动不存在");
     await writeStore(data);
     return sendJson(res, 200, { activity });
   }
