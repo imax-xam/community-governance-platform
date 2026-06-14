@@ -225,6 +225,18 @@ function lastIssueUpdate(issue) {
   return issue.updates[issue.updates.length - 1] || null;
 }
 
+function issueChangeText(nextStatus, nextAssigneeId, issue, users) {
+  const changes = [];
+  if (nextStatus !== issue.status) {
+    changes.push(`状态更新为「${statusLabels[nextStatus] || nextStatus}」`);
+  }
+  if (nextAssigneeId !== issue.assigneeId) {
+    const assignee = users.find((item) => item.id === nextAssigneeId);
+    changes.push(nextAssigneeId ? `负责人更新为「${assignee?.name || "社区工作人员"}」` : "负责人已取消分派");
+  }
+  return changes.join("，");
+}
+
 function buildStats(data) {
   const byStatus = {};
   const byCategory = {};
@@ -366,6 +378,17 @@ async function handleApi(req, res, pathname) {
     return sendJson(res, 201, { activity });
   }
 
+  if (method === "DELETE" && pathname.match(/^\/api\/activities\/[^/]+$/)) {
+    if (!requireRole(user, res, ["staff", "manager"])) return;
+    const activityId = pathname.split("/")[3];
+    const data = await readStore();
+    const index = data.activities.findIndex((item) => item.id === activityId);
+    if (index === -1) return sendError(res, 404, "活动不存在");
+    const [activity] = data.activities.splice(index, 1);
+    await writeStore(data);
+    return sendJson(res, 200, { activity });
+  }
+
   if (method === "POST" && pathname.match(/^\/api\/activities\/[^/]+\/join$/)) {
     if (!requireRole(user, res, ["resident"])) return;
     const activityId = pathname.split("/")[3];
@@ -429,12 +452,14 @@ async function handleApi(req, res, pathname) {
     const lastUpdate = lastIssueUpdate(issue);
     const changedStatus = nextStatus !== issue.status;
     const changedAssignee = nextAssigneeId !== issue.assigneeId;
-    const duplicateUpdateText = updateText && lastUpdate?.text === updateText;
-    const hasNewUpdateText = updateText && !duplicateUpdateText;
+    const generatedText = issueChangeText(nextStatus, nextAssigneeId, issue, data.users);
+    const progressText = updateText || generatedText;
+    const duplicateUpdateText = progressText && lastUpdate?.text === progressText;
+    const hasNewUpdateText = progressText && !duplicateUpdateText;
 
     issue.status = nextStatus;
     issue.assigneeId = nextAssigneeId;
-    if (hasNewUpdateText) issue.updates.push({ at: new Date().toISOString(), text: updateText });
+    if (hasNewUpdateText) issue.updates.push({ at: new Date().toISOString(), text: progressText });
     if (changedStatus || changedAssignee || hasNewUpdateText) {
       issue.updatedAt = new Date().toISOString();
       await writeStore(data);
