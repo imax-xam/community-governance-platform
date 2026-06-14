@@ -1,17 +1,19 @@
 const http = require("http");
 const fs = require("fs/promises");
+const fsSync = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const Database = require("better-sqlite3");
 
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || "127.0.0.1";
-const DATA_FILE = process.env.DATA_FILE || path.join(__dirname, "data", "db.json");
+const LEGACY_DATA_FILE = process.env.DATA_FILE || path.join(__dirname, "data", "db.json");
+const DB_FILE = process.env.DB_FILE || path.join(__dirname, "data", "linlitong.sqlite");
 const PUBLIC_DIR = path.join(__dirname, "public");
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24;
 const sessions = new Map();
-let storeCache = null;
-let storeInitPromise = null;
-let storeWriteQueue = Promise.resolve();
+let db = null;
+let storeReady = false;
 const DEMO_LOGIN_EMAIL = "demo@linlitong.local";
 const DEMO_PASSWORD = "demo123456";
 const demoProfiles = {
@@ -72,36 +74,80 @@ function sendError(res, status, message) {
 }
 
 async function ensureStore() {
-  if (storeCache) return storeCache;
-  if (storeInitPromise) return storeInitPromise;
-  storeInitPromise = loadStore();
-  storeCache = await storeInitPromise;
-  return storeCache;
+  if (storeReady) return;
+  initializeDatabase();
+  storeReady = true;
 }
 
-async function loadStore() {
-  await fs.mkdir(path.dirname(DATA_FILE), { recursive: true });
-  let data;
-  try {
-    data = JSON.parse(await fs.readFile(DATA_FILE, "utf8"));
-  } catch {
-    data = JSON.parse(JSON.stringify(seedData));
+function initializeDatabase() {
+  fsSync.mkdirSync(path.dirname(DB_FILE), { recursive: true });
+  db = new Database(DB_FILE);
+  db.pragma("journal_mode = WAL");
+  db.pragma("foreign_keys = ON");
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS issues (id TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT);
+    CREATE TABLE IF NOT EXISTS announcements (id TEXT PRIMARY KEY, data TEXT NOT NULL, created_at TEXT);
+    CREATE TABLE IF NOT EXISTS activities (id TEXT PRIMARY KEY, data TEXT NOT NULL, created_at TEXT);
+  `);
+  const hasUsers = db.prepare("SELECT COUNT(*) AS count FROM users").get().count > 0;
+  if (!hasUsers) {
+    const data = loadInitialData();
+    ensureDemoUsers(data);
+    persistStore(data);
+  } else {
+    const data = readStoreSync();
+    if (ensureDemoUsers(data)) persistStore(data);
   }
-  storeCache = data;
-  if (ensureDemoUsers(data)) await writeStore(data);
-  return data;
+}
+
+function loadInitialData() {
+  if (fsSync.existsSync(LEGACY_DATA_FILE)) {
+    try {
+      return JSON.parse(fsSync.readFileSync(LEGACY_DATA_FILE, "utf8"));
+    } catch {
+      return JSON.parse(JSON.stringify(seedData));
+    }
+  }
+  return JSON.parse(JSON.stringify(seedData));
+}
+
+function parseRows(rows) {
+  return rows.map((row) => JSON.parse(row.data));
+}
+
+function readStoreSync() {
+  return {
+    users: parseRows(db.prepare("SELECT data FROM users").all()),
+    issues: parseRows(db.prepare("SELECT data FROM issues ORDER BY COALESCE(updated_at, '') DESC").all()),
+    announcements: parseRows(db.prepare("SELECT data FROM announcements ORDER BY COALESCE(created_at, '') DESC").all()),
+    activities: parseRows(db.prepare("SELECT data FROM activities ORDER BY COALESCE(created_at, '') DESC").all())
+  };
+}
+
+const persistStore = (data) => {
+  const insertUser = db.prepare("INSERT OR REPLACE INTO users (id, data) VALUES (?, ?)");
+  const insertIssue = db.prepare("INSERT OR REPLACE INTO issues (id, data, updated_at) VALUES (?, ?, ?)");
+  const insertAnnouncement = db.prepare("INSERT OR REPLACE INTO announcements (id, data, created_at) VALUES (?, ?, ?)");
+  const insertActivity = db.prepare("INSERT OR REPLACE INTO activities (id, data, created_at) VALUES (?, ?, ?)");
+  const transaction = db.transaction(() => {
+    db.exec("DELETE FROM users; DELETE FROM issues; DELETE FROM announcements; DELETE FROM activities;");
+    for (const user of data.users) insertUser.run(user.id, JSON.stringify(user));
+    for (const issue of data.issues) insertIssue.run(issue.id, JSON.stringify(issue), issue.updatedAt || issue.createdAt || "");
+    for (const announcement of data.announcements) insertAnnouncement.run(announcement.id, JSON.stringify(announcement), announcement.createdAt || "");
+    for (const activity of data.activities) insertActivity.run(activity.id, JSON.stringify(activity), activity.createdAt || activity.date || "");
+  });
+  transaction();
 }
 
 async function readStore() {
-  return ensureStore();
+  await ensureStore();
+  return readStoreSync();
 }
 
 async function writeStore(data) {
-  storeCache = data;
-  await fs.mkdir(path.dirname(DATA_FILE), { recursive: true });
-  const payload = JSON.stringify(data, null, 2);
-  storeWriteQueue = storeWriteQueue.catch(() => {}).then(() => fs.writeFile(DATA_FILE, payload));
-  await storeWriteQueue;
+  await ensureStore();
+  persistStore(data);
 }
 
 function id(prefix) {
@@ -235,6 +281,13 @@ function issueChangeText(nextStatus, nextAssigneeId, issue, users) {
     changes.push(nextAssigneeId ? `负责人更新为「${assignee?.name || "社区工作人员"}」` : "负责人已取消分派");
   }
   return changes.join("，");
+}
+
+function removeActivity(data, activityId) {
+  const index = data.activities.findIndex((item) => item.id === activityId);
+  if (index === -1) return null;
+  const [activity] = data.activities.splice(index, 1);
+  return activity;
 }
 
 function buildStats(data) {
@@ -378,13 +431,15 @@ async function handleApi(req, res, pathname) {
     return sendJson(res, 201, { activity });
   }
 
-  if (method === "DELETE" && pathname.match(/^\/api\/activities\/[^/]+$/)) {
+  if (
+    (method === "DELETE" && pathname.match(/^\/api\/activities\/[^/]+$/)) ||
+    (method === "POST" && pathname.match(/^\/api\/activities\/[^/]+\/delete$/))
+  ) {
     if (!requireRole(user, res, ["staff", "manager"])) return;
     const activityId = pathname.split("/")[3];
     const data = await readStore();
-    const index = data.activities.findIndex((item) => item.id === activityId);
-    if (index === -1) return sendError(res, 404, "活动不存在");
-    const [activity] = data.activities.splice(index, 1);
+    const activity = removeActivity(data, activityId);
+    if (!activity) return sendError(res, 404, "活动不存在");
     await writeStore(data);
     return sendJson(res, 200, { activity });
   }
