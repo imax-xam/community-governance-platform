@@ -14,5 +14,8 @@
     "nodejs"
   ],
   "author": "",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "better-sqlite3": "^12.10.1"
+  }
 }
