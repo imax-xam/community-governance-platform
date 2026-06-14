@@ -67,6 +67,11 @@ function setButtonBusy(button, busy, busyText = "处理中...") {
   }
 }
 
+function setFormBusy(form, busy, busyText = "提交中...") {
+  const button = form.querySelector('button[type="submit"]');
+  if (button) setButtonBusy(button, busy, busyText);
+}
+
 function dateText(value) {
   return new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium" }).format(new Date(value));
 }
@@ -265,6 +270,26 @@ function replaceIssue(updatedIssue) {
   renderIssues();
 }
 
+function replaceActivity(updatedActivity) {
+  const index = state.activities.findIndex((activity) => activity.id === updatedActivity.id);
+  if (index >= 0) {
+    state.activities[index] = updatedActivity;
+  } else {
+    state.activities.unshift(updatedActivity);
+  }
+  renderActivities();
+}
+
+function removeActivity(activityId) {
+  state.activities = state.activities.filter((activity) => activity.id !== activityId);
+  renderActivities();
+}
+
+function addAnnouncement(announcement) {
+  state.announcements.unshift(announcement);
+  if (state.user.role === "resident") renderAnnouncements();
+}
+
 async function refreshData() {
   if (!state.user) return;
   const common = [
@@ -317,8 +342,8 @@ document.addEventListener("click", async (event) => {
   if (joinButton) {
     try {
       setButtonBusy(joinButton, true, "报名中...");
-      await api(`/api/activities/${joinButton.dataset.join}/join`, { method: "POST" });
-      await refreshData();
+      const { activity } = await api(`/api/activities/${joinButton.dataset.join}/join`, { method: "POST" });
+      replaceActivity(activity);
       toast("报名成功，可在活动报名页查看报名状态");
     } catch (error) {
       toast(`报名失败：${error.message}`, "error");
@@ -333,8 +358,8 @@ document.addEventListener("click", async (event) => {
     if (!confirmed) return;
     try {
       setButtonBusy(deleteActivityButton, true, "删除中...");
-      await api(`/api/activities/${deleteActivityButton.dataset.deleteActivity}/delete`, { method: "POST" });
-      await refreshData();
+      const { activity } = await api(`/api/activities/${deleteActivityButton.dataset.deleteActivity}/delete`, { method: "POST" });
+      removeActivity(activity.id);
       toast("活动已删除");
     } catch (error) {
       toast(`删除活动失败：${error.message}`, "error");
@@ -369,7 +394,7 @@ document.addEventListener("submit", async (event) => {
     try {
       const { user } = await api("/api/login", { method: "POST", body: JSON.stringify(formData(form)) });
       showApp(user);
-      await refreshData();
+      refreshData().catch(() => toast("登录成功，但数据刷新失败，请稍后手动刷新页面", "error"));
       toast(`登录成功，当前身份：${roleMap[user.role]}`);
     } catch (error) {
       $("#authMessage").textContent = error.message;
@@ -391,34 +416,44 @@ document.addEventListener("submit", async (event) => {
 
   if (form.id === "issueForm") {
     try {
-      await api("/api/issues", { method: "POST", body: JSON.stringify(formData(form)) });
+      setFormBusy(form, true);
+      const { issue } = await api("/api/issues", { method: "POST", body: JSON.stringify(formData(form)) });
+      replaceIssue(issue);
       form.reset();
-      await refreshData();
       showPage("issues");
       toast("诉求提交成功，已进入待受理状态");
     } catch (error) {
       toast(`提交失败：${error.message}`, "error");
+    } finally {
+      setFormBusy(form, false);
     }
   }
 
   if (form.id === "announcementForm") {
     try {
-      await api("/api/announcements", { method: "POST", body: JSON.stringify(formData(form)) });
+      setFormBusy(form, true, "发布中...");
+      const { announcement } = await api("/api/announcements", { method: "POST", body: JSON.stringify(formData(form)) });
+      addAnnouncement(announcement);
       form.reset();
       toast("公告发布成功，居民端可查看");
     } catch (error) {
       toast(`公告发布失败：${error.message}`, "error");
+    } finally {
+      setFormBusy(form, false);
     }
   }
 
   if (form.id === "activityForm") {
     try {
-      await api("/api/activities", { method: "POST", body: JSON.stringify(formData(form)) });
+      setFormBusy(form, true, "发布中...");
+      const { activity } = await api("/api/activities", { method: "POST", body: JSON.stringify(formData(form)) });
+      replaceActivity(activity);
       form.reset();
-      await refreshData();
       toast("活动发布成功，居民端可报名");
     } catch (error) {
       toast(`活动发布失败：${error.message}`, "error");
+    } finally {
+      setFormBusy(form, false);
     }
   }
 });
