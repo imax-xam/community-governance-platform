@@ -207,6 +207,10 @@ function sanitizeIssue(issue, users) {
   };
 }
 
+function lastIssueUpdate(issue) {
+  return issue.updates[issue.updates.length - 1] || null;
+}
+
 function buildStats(data) {
   const byStatus = {};
   const byCategory = {};
@@ -405,12 +409,22 @@ async function handleApi(req, res, pathname) {
     if (body.status && !Object.keys(statusLabels).includes(body.status)) {
       return sendError(res, 400, "状态值不合法");
     }
-    if (body.status) issue.status = body.status;
-    if (typeof body.assigneeId === "string") issue.assigneeId = body.assigneeId;
+    const nextStatus = body.status || issue.status;
+    const nextAssigneeId = typeof body.assigneeId === "string" ? body.assigneeId : issue.assigneeId;
     const updateText = String(body.updateText || "").trim();
-    if (updateText) issue.updates.push({ at: new Date().toISOString(), text: updateText });
-    issue.updatedAt = new Date().toISOString();
-    await writeStore(data);
+    const lastUpdate = lastIssueUpdate(issue);
+    const changedStatus = nextStatus !== issue.status;
+    const changedAssignee = nextAssigneeId !== issue.assigneeId;
+    const duplicateUpdateText = updateText && lastUpdate?.text === updateText;
+    const hasNewUpdateText = updateText && !duplicateUpdateText;
+
+    issue.status = nextStatus;
+    issue.assigneeId = nextAssigneeId;
+    if (hasNewUpdateText) issue.updates.push({ at: new Date().toISOString(), text: updateText });
+    if (changedStatus || changedAssignee || hasNewUpdateText) {
+      issue.updatedAt = new Date().toISOString();
+      await writeStore(data);
+    }
     return sendJson(res, 200, { issue: sanitizeIssue(issue, data.users) });
   }
 
