@@ -142,7 +142,11 @@ function showPage(pageKey) {
 }
 
 function issueCard(issue, editable = false) {
-  const updates = issue.updates.map((update) => `<p class="muted">${dateText(update.at)}：${escapeHtml(update.text)}</p>`).join("");
+  const updates = issue.updates.map((update) => `
+    <li>
+      <span>${dateText(update.at)}</span>
+      <p>${escapeHtml(update.text)}</p>
+    </li>`).join("");
   const staffOptions = state.staff.map((staff) => `<option value="${escapeHtml(staff.id)}" ${staff.id === issue.assigneeId ? "selected" : ""}>${escapeHtml(staff.name)}</option>`).join("");
   const controls = editable ? `
     <div class="actions" data-issue-actions="${issue.id}">
@@ -164,7 +168,11 @@ function issueCard(issue, editable = false) {
       </div>
       <p class="muted">${escapeHtml(issue.category)} · ${escapeHtml(issue.creatorName)}${issue.assigneeName ? ` · 负责人：${escapeHtml(issue.assigneeName)}` : ""}</p>
       <p>${escapeHtml(issue.description)}</p>
-      ${updates}
+      <div class="issue-meta">
+        <span>当前状态：${escapeHtml(issue.statusText)}</span>
+        <span>最近更新：${dateText(issue.updatedAt || issue.createdAt)}</span>
+      </div>
+      <ol class="timeline">${updates}</ol>
       ${controls}
     </article>`;
 }
@@ -185,7 +193,9 @@ function renderIssues() {
   }
 }
 
-function activityCard(activity, canJoin = false) {
+function activityCard(activity, options = {}) {
+  const canJoin = Boolean(options.canJoin);
+  const canDelete = Boolean(options.canDelete);
   const joined = canJoin && activity.participants.includes(state.user.id);
   return `
     <article class="item">
@@ -197,16 +207,17 @@ function activityCard(activity, canJoin = false) {
       <p class="muted">活动地点：${escapeHtml(activity.location)}</p>
       <p class="muted">剩余名额：${Math.max(activity.capacity - activity.participants.length, 0)}</p>
       ${canJoin ? `<button data-join="${activity.id}" ${joined ? "disabled" : ""}>${joined ? "已报名" : "报名"}</button>` : ""}
+      ${canDelete ? `<button class="danger" data-delete-activity="${activity.id}">删除活动</button>` : ""}
     </article>`;
 }
 
 function renderActivities() {
   const empty = "<p class=\"muted\">暂无活动</p>";
   if (state.user.role === "resident") {
-    $("#activities").innerHTML = state.activities.map((activity) => activityCard(activity, true)).join("") || empty;
+    $("#activities").innerHTML = state.activities.map((activity) => activityCard(activity, { canJoin: true })).join("") || empty;
   }
   if (state.user.role === "staff") {
-    $("#staffActivities").innerHTML = state.activities.map((activity) => activityCard(activity)).join("") || empty;
+    $("#staffActivities").innerHTML = state.activities.map((activity) => activityCard(activity, { canDelete: true })).join("") || empty;
   }
 }
 
@@ -313,6 +324,22 @@ document.addEventListener("click", async (event) => {
       toast(`报名失败：${error.message}`, "error");
     } finally {
       setButtonBusy(joinButton, false);
+    }
+  }
+
+  const deleteActivityButton = event.target.closest("[data-delete-activity]");
+  if (deleteActivityButton) {
+    const confirmed = confirm("确认删除该活动？居民端将不再显示。");
+    if (!confirmed) return;
+    try {
+      setButtonBusy(deleteActivityButton, true, "删除中...");
+      await api(`/api/activities/${deleteActivityButton.dataset.deleteActivity}`, { method: "DELETE" });
+      await refreshData();
+      toast("活动已删除");
+    } catch (error) {
+      toast(`删除活动失败：${error.message}`, "error");
+    } finally {
+      setButtonBusy(deleteActivityButton, false);
     }
   }
 

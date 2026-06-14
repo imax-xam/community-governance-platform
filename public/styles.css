@@ -144,6 +144,11 @@ button:hover {
   background: var(--soft);
 }
 
+.danger {
+  margin-top: 10px;
+  background: var(--accent);
+}
+
 .form {
   display: grid;
   gap: 14px;
@@ -232,6 +237,34 @@ textarea {
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 8px;
+}
+
+.issue-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin: 12px 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.timeline {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.timeline li {
+  border-left: 3px solid var(--soft);
+  padding-left: 10px;
+}
+
+.timeline span {
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .badge {
