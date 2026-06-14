@@ -9,6 +9,9 @@ const DATA_FILE = process.env.DATA_FILE || path.join(__dirname, "data", "db.json
 const PUBLIC_DIR = path.join(__dirname, "public");
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24;
 const sessions = new Map();
+let storeCache = null;
+let storeInitPromise = null;
+let storeWriteQueue = Promise.resolve();
 const DEMO_LOGIN_EMAIL = "demo@linlitong.local";
 const DEMO_PASSWORD = "demo123456";
 const demoProfiles = {
@@ -69,6 +72,14 @@ function sendError(res, status, message) {
 }
 
 async function ensureStore() {
+  if (storeCache) return storeCache;
+  if (storeInitPromise) return storeInitPromise;
+  storeInitPromise = loadStore();
+  storeCache = await storeInitPromise;
+  return storeCache;
+}
+
+async function loadStore() {
   await fs.mkdir(path.dirname(DATA_FILE), { recursive: true });
   let data;
   try {
@@ -76,18 +87,21 @@ async function ensureStore() {
   } catch {
     data = JSON.parse(JSON.stringify(seedData));
   }
+  storeCache = data;
   if (ensureDemoUsers(data)) await writeStore(data);
+  return data;
 }
 
 async function readStore() {
-  await ensureStore();
-  const raw = await fs.readFile(DATA_FILE, "utf8");
-  return JSON.parse(raw);
+  return ensureStore();
 }
 
 async function writeStore(data) {
+  storeCache = data;
   await fs.mkdir(path.dirname(DATA_FILE), { recursive: true });
-  await fs.writeFile(DATA_FILE, JSON.stringify(data, null, 2));
+  const payload = JSON.stringify(data, null, 2);
+  storeWriteQueue = storeWriteQueue.catch(() => {}).then(() => fs.writeFile(DATA_FILE, payload));
+  await storeWriteQueue;
 }
 
 function id(prefix) {
@@ -465,6 +479,13 @@ async function serveStatic(req, res, pathname) {
 
 function createServer() {
   return http.createServer(async (req, res) => {
+    const startedAt = Date.now();
+    res.on("finish", () => {
+      const duration = Date.now() - startedAt;
+      if (duration > 500) {
+        console.warn(`[slow] ${req.method} ${req.url} ${res.statusCode} ${duration}ms`);
+      }
+    });
     try {
       const url = new URL(req.url, `http://${req.headers.host}`);
       if (url.pathname.startsWith("/api/")) {
