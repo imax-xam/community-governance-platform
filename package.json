@@ -1,0 +1,18 @@
+{
+  "name": "community-governance-platform",
+  "version": "1.0.0",
+  "description": "邻里通：社区公共服务协同治理平台",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/*.test.js",
+    "check": "node --check server.js"
+  },
+  "keywords": [
+    "community",
+    "governance",
+    "nodejs"
+  ],
+  "author": "",
+  "license": "MIT"
+}

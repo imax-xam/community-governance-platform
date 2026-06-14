@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>邻里通</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">社区公共服务协同治理平台</p>
+        <h1>邻里通</h1>
+      </div>
+      <button id="logoutBtn" class="ghost hidden">退出登录</button>
+    </header>
+
+    <main>
+      <section id="authView" class="auth-grid">
+        <div class="intro">
+          <h2>把居民诉求、社区处置和街道研判放到同一个工作台。</h2>
+          <p>居民能提交与追踪事项，工作人员能受理分派，管理者能查看统计和高频问题。</p>
+        </div>
+        <div class="panel">
+          <div class="tabs">
+            <button class="tab active" data-auth-tab="login">登录</button>
+            <button class="tab" data-auth-tab="register">邮箱注册</button>
+          </div>
+          <form id="loginForm" class="form">
+            <label>邮箱<input name="email" type="email" required autocomplete="email"></label>
+            <label>密码<input name="password" type="password" required autocomplete="current-password"></label>
+            <label class="login-role">登录身份
+              <select name="role">
+                <option value="resident">居民</option>
+                <option value="staff">社区工作人员</option>
+                <option value="manager">街道/管理者</option>
+              </select>
+            </label>
+            <button type="submit">登录</button>
+            <p class="hint">万能账号：demo@linlitong.local / demo123456</p>
+            <div class="quick-login">
+              <button type="button" class="ghost" data-demo-role="resident">居民演示</button>
+              <button type="button" class="ghost" data-demo-role="staff">工作人员演示</button>
+              <button type="button" class="ghost" data-demo-role="manager">管理者演示</button>
+            </div>
+          </form>
+          <form id="registerForm" class="form hidden">
+            <label>姓名<input name="name" required autocomplete="name"></label>
+            <label>邮箱<input name="email" type="email" required autocomplete="email"></label>
+            <label>密码<input name="password" type="password" minlength="6" required autocomplete="new-password"></label>
+            <label>角色
+              <select name="role">
+                <option value="resident">居民</option>
+                <option value="staff">社区工作人员</option>
+                <option value="manager">街道/管理者</option>
+              </select>
+            </label>
+            <button type="submit">创建账号</button>
+          </form>
+          <p id="authMessage" class="message"></p>
+        </div>
+      </section>
+
+      <section id="appView" class="hidden">
+        <div class="workspace-head">
+          <div>
+            <p id="roleText" class="eyebrow"></p>
+            <h2 id="welcomeText"></h2>
+          </div>
+          <nav id="navTabs" class="tabs"></nav>
+        </div>
+
+        <section id="residentView" class="role-view hidden">
+          <div class="page" data-page="issues">
+            <div class="layout two-col">
+              <form id="issueForm" class="panel form">
+                <h3>提交诉求</h3>
+                <label>诉求标题<input name="title" required placeholder="例如：楼道灯损坏"></label>
+                <label>问题类别
+                  <select name="category">
+                    <option>环境卫生</option>
+                    <option>设施维修</option>
+                    <option>邻里纠纷</option>
+                    <option>安全隐患</option>
+                    <option>其他</option>
+                  </select>
+                </label>
+                <label>详细描述<textarea name="description" rows="5" required></textarea></label>
+                <button type="submit">提交</button>
+              </form>
+              <div class="panel">
+                <h3>我的诉求进度</h3>
+                <div id="residentIssues" class="list"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="page hidden" data-page="activities">
+            <div class="panel">
+              <h3>活动报名</h3>
+              <div id="activities" class="list"></div>
+            </div>
+          </div>
+
+          <div class="page hidden" data-page="announcements">
+            <div class="panel">
+              <h3>社区公告</h3>
+              <div id="announcements" class="list"></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="staffView" class="role-view hidden">
+          <div class="page" data-page="acceptIssues">
+            <div class="panel">
+              <h3>事项受理</h3>
+              <div id="acceptIssues" class="list"></div>
+            </div>
+          </div>
+          <div class="page hidden" data-page="assignIssues">
+            <div class="panel">
+              <h3>分派任务</h3>
+              <div id="assignIssues" class="list"></div>
+            </div>
+          </div>
+          <div class="page hidden" data-page="announcementManage">
+            <form id="announcementForm" class="panel form">
+              <h3>发布公告</h3>
+              <label>标题<input name="title" required></label>
+              <label>内容<textarea name="body" rows="5" required></textarea></label>
+              <button type="submit">发布</button>
+            </form>
+          </div>
+          <div class="page hidden" data-page="activityManage">
+            <form id="activityForm" class="panel form">
+              <h3>发布活动</h3>
+              <label>活动标题<input name="title" required placeholder="例如：便民义诊"></label>
+              <label>活动日期<input name="date" type="date" required></label>
+              <label>活动地点<input name="location" required placeholder="例如：社区活动室"></label>
+              <label>名额<input name="capacity" type="number" min="1" value="30" required></label>
+              <button type="submit">发布活动</button>
+            </form>
+            <div class="panel">
+              <h3>已发布活动</h3>
+              <div id="staffActivities" class="list"></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="managerView" class="role-view hidden">
+          <div class="page" data-page="stats">
+            <div id="statsCards" class="stats"></div>
+          </div>
+          <div class="page hidden" data-page="hotIssues">
+            <div class="panel">
+              <h3>高频问题</h3>
+              <div id="hotIssues" class="list"></div>
+            </div>
+          </div>
+          <div class="page hidden" data-page="governanceEffect">
+            <div id="effectCards" class="stats"></div>
+            <div class="panel">
+              <h3>治理事项明细</h3>
+              <div id="managerIssues" class="list"></div>
+            </div>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <div id="toast" class="toast hidden"></div>
+    <script src="/app.js"></script>
+  </body>
+</html>
