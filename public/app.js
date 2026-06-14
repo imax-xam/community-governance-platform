@@ -21,6 +21,7 @@ const statusMap = {
 };
 
 const $ = (selector) => document.querySelector(selector);
+let toastTimer = null;
 
 function escapeHtml(value) {
   return String(value)
@@ -44,11 +45,14 @@ async function api(path, options = {}) {
   return data;
 }
 
-function toast(message) {
+function toast(message, type = "success") {
   const el = $("#toast");
+  clearTimeout(toastTimer);
   el.textContent = message;
+  el.classList.remove("toast-success", "toast-error");
+  el.classList.add(type === "error" ? "toast-error" : "toast-success");
   el.classList.remove("hidden");
-  setTimeout(() => el.classList.add("hidden"), 2600);
+  toastTimer = setTimeout(() => el.classList.add("hidden"), 4200);
 }
 
 function dateText(value) {
@@ -280,10 +284,10 @@ document.addEventListener("click", async (event) => {
   if (joinButton) {
     try {
       await api(`/api/activities/${joinButton.dataset.join}/join`, { method: "POST" });
-      toast("报名成功");
       await refreshData();
+      toast("报名成功，可在活动报名页查看报名状态");
     } catch (error) {
-      toast(error.message);
+      toast(`报名失败：${error.message}`, "error");
     }
   }
 
@@ -293,10 +297,10 @@ document.addEventListener("click", async (event) => {
     const body = Object.fromEntries([...wrap.querySelectorAll("[data-field]")].map((field) => [field.dataset.field, field.value]));
     try {
       await api(`/api/issues/${updateButton.dataset.updateIssue}`, { method: "PATCH", body: JSON.stringify(body) });
-      toast("处理状态已更新");
       await refreshData();
+      toast("处理状态已更新，居民端将同步看到最新进展");
     } catch (error) {
-      toast(error.message);
+      toast(`更新失败：${error.message}`, "error");
     }
   }
 });
@@ -311,8 +315,10 @@ document.addEventListener("submit", async (event) => {
       const { user } = await api("/api/login", { method: "POST", body: JSON.stringify(formData(form)) });
       showApp(user);
       await refreshData();
+      toast(`登录成功，当前身份：${roleMap[user.role]}`);
     } catch (error) {
       $("#authMessage").textContent = error.message;
+      toast(`登录失败：${error.message}`, "error");
     }
   }
 
@@ -321,8 +327,10 @@ document.addEventListener("submit", async (event) => {
       await api("/api/register", { method: "POST", body: JSON.stringify(formData(form)) });
       $("#authMessage").textContent = "注册成功，请使用邮箱和密码登录";
       setAuthTab("login");
+      toast("注册成功，请使用邮箱和密码登录");
     } catch (error) {
       $("#authMessage").textContent = error.message;
+      toast(`注册失败：${error.message}`, "error");
     }
   }
 
@@ -330,11 +338,11 @@ document.addEventListener("submit", async (event) => {
     try {
       await api("/api/issues", { method: "POST", body: JSON.stringify(formData(form)) });
       form.reset();
-      toast("诉求已提交");
       await refreshData();
       showPage("issues");
+      toast("诉求提交成功，已进入待受理状态");
     } catch (error) {
-      toast(`提交失败：${error.message}`);
+      toast(`提交失败：${error.message}`, "error");
     }
   }
 
@@ -342,9 +350,9 @@ document.addEventListener("submit", async (event) => {
     try {
       await api("/api/announcements", { method: "POST", body: JSON.stringify(formData(form)) });
       form.reset();
-      toast("公告已发布");
+      toast("公告发布成功，居民端可查看");
     } catch (error) {
-      toast(error.message);
+      toast(`公告发布失败：${error.message}`, "error");
     }
   }
 
@@ -352,17 +360,22 @@ document.addEventListener("submit", async (event) => {
     try {
       await api("/api/activities", { method: "POST", body: JSON.stringify(formData(form)) });
       form.reset();
-      toast("活动已发布");
       await refreshData();
+      toast("活动发布成功，居民端可报名");
     } catch (error) {
-      toast(error.message);
+      toast(`活动发布失败：${error.message}`, "error");
     }
   }
 });
 
 $("#logoutBtn").addEventListener("click", async () => {
-  await api("/api/logout", { method: "POST" });
-  showAuth();
+  try {
+    await api("/api/logout", { method: "POST" });
+    showAuth();
+    toast("已退出登录");
+  } catch (error) {
+    toast(`退出失败：${error.message}`, "error");
+  }
 });
 
 async function boot() {
