@@ -55,6 +55,18 @@ function toast(message, type = "success") {
   toastTimer = setTimeout(() => el.classList.add("hidden"), 4200);
 }
 
+function setButtonBusy(button, busy, busyText = "处理中...") {
+  if (busy) {
+    button.dataset.originalText = button.textContent;
+    button.textContent = busyText;
+    button.disabled = true;
+  } else {
+    button.textContent = button.dataset.originalText || button.textContent;
+    button.disabled = false;
+    delete button.dataset.originalText;
+  }
+}
+
 function dateText(value) {
   return new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium" }).format(new Date(value));
 }
@@ -232,6 +244,16 @@ function renderStats(stats) {
     </article>`).join("") || "<p class=\"muted\">暂无高频问题</p>";
 }
 
+function replaceIssue(updatedIssue) {
+  const index = state.issues.findIndex((issue) => issue.id === updatedIssue.id);
+  if (index >= 0) {
+    state.issues[index] = updatedIssue;
+  } else {
+    state.issues.unshift(updatedIssue);
+  }
+  renderIssues();
+}
+
 async function refreshData() {
   if (!state.user) return;
   const common = [
@@ -283,11 +305,14 @@ document.addEventListener("click", async (event) => {
   const joinButton = event.target.closest("[data-join]");
   if (joinButton) {
     try {
+      setButtonBusy(joinButton, true, "报名中...");
       await api(`/api/activities/${joinButton.dataset.join}/join`, { method: "POST" });
       await refreshData();
       toast("报名成功，可在活动报名页查看报名状态");
     } catch (error) {
       toast(`报名失败：${error.message}`, "error");
+    } finally {
+      setButtonBusy(joinButton, false);
     }
   }
 
@@ -296,11 +321,14 @@ document.addEventListener("click", async (event) => {
     const wrap = document.querySelector(`[data-issue-actions="${updateButton.dataset.updateIssue}"]`);
     const body = Object.fromEntries([...wrap.querySelectorAll("[data-field]")].map((field) => [field.dataset.field, field.value]));
     try {
-      await api(`/api/issues/${updateButton.dataset.updateIssue}`, { method: "PATCH", body: JSON.stringify(body) });
-      await refreshData();
+      setButtonBusy(updateButton, true, "更新中...");
+      const { issue } = await api(`/api/issues/${updateButton.dataset.updateIssue}`, { method: "PATCH", body: JSON.stringify(body) });
+      replaceIssue(issue);
       toast("处理状态已更新，居民端将同步看到最新进展");
     } catch (error) {
       toast(`更新失败：${error.message}`, "error");
+    } finally {
+      setButtonBusy(updateButton, false);
     }
   }
 });
